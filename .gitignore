@@ -1,0 +1,51 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno y credenciales
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Archivos temporales de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Herramientas y editores
+.vscode/
+.idea/
+
+# Pruebas y cachés
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Modelos y artefactos generados
+models/*.pkl
+models/*.joblib
+models/*.json
+inference/artifacts/*.pkl
+
+# Datos generados del pipeline
+Data/processed/
+Data/eda_report/
+
+# MLflow local
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Logs
+*.log
+
+# Configuracion local de DVC con credenciales
+.dvc/config

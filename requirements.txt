@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+xgboost
+pandas
+requests
+scikit-learn
+python-dotenv
+pandera
+matplotlib
+seaborn
+shap
+numpy
+openai
+langgraph
+crewai
+mlflow==3.17.2

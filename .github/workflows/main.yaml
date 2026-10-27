@@ -1,0 +1,140 @@
+name: CrediRisk-CI-CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  workflow:
+    runs-on: ubuntu-latest
+
+    env:
+      MLFLOW_TRACKING_URI: http://localhost:5555
+      MPLBACKEND: Agg
+
+    steps:
+      # 1. Descargar el código
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Configurar Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # 3. Instalar dependencias
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # 4. Procesamiento de datos
+      - name: Run Data Processing
+        run: |
+          python -m ml_pipeline.01_ingestion
+          python -m ml_pipeline.02_validation
+          python -m ml_pipeline.03_eda
+          python -m ml_pipeline.04_cleaning
+
+      # 5. Feature Engineering y preprocesamiento
+      - name: Do Feature Engineering
+        run: |
+          python -m ml_pipeline.05_feature_engineering
+          python -m ml_pipeline.06_preprocessing
+
+      # 6. Configurar MLflow mediante Docker
+      - name: Setup MLflow
+        run: |
+          docker pull ghcr.io/mlflow/mlflow:latest
+
+          docker run -d \
+            -p 5555:5000 \
+            --name mlflow-server \
+            ghcr.io/mlflow/mlflow:latest \
+            mlflow server \
+            --host 0.0.0.0 \
+            --port 5000 \
+            --backend-store-uri sqlite:///mlflow.db \
+            --default-artifact-root /tmp/mlruns
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:5555/health; then
+              echo "MLflow está disponible."
+              exit 0
+            fi
+
+            if [ "$(docker inspect -f '{{.State.Running}}' mlflow-server 2>/dev/null)" != "true" ]; then
+              echo "El contenedor MLflow dejó de ejecutarse."
+              docker logs mlflow-server
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "MLflow no respondió a tiempo."
+          docker logs mlflow-server
+          exit 1
+
+      # 7. Entrenar el modelo
+      - name: Train Model
+        run: |
+          python -m src.model_training.01_training
+
+      # 8. Evaluación, validación cruzada y ajuste
+      - name: Evaluate and Tune Model
+        run: |
+          python -m src.model_training.02_evaluation
+          python -m src.model_training.03_cross_validation
+          python -m src.model_training.04_tuning
+
+      # 9. Limpiar MLflow
+      - name: Cleaning Up MLflow
+        if: always()
+        run: |
+          docker stop mlflow-server 2>/dev/null || true
+          docker rm mlflow-server 2>/dev/null || true
+
+      # 10. Iniciar sesión en Docker Hub
+      - name: Login to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 10. Configurar Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 11. Construir y publicar FastAPI
+      - name: Build and Push FastAPI Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./inference
+          file: ./inference/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            crcas/credit-risk-api:dev
+            crcas/credit-risk-api:${{ github.sha }}
+
+      # 11. Construir y publicar Streamlit
+      - name: Build and Push Streamlit Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./streamlit-app
+          file: ./streamlit-app/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            crcas/credit-risk-streamlit:dev
+            crcas/credit-risk-streamlit:${{ github.sha }}

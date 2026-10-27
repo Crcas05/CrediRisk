@@ -1,0 +1,6 @@
+outs:
+- md5: 11008df507b8223dc0392c07d03209f9
+  size: 496748
+  isexec: true
+  hash: md5
+  path: riesgo_crediticio.csv
