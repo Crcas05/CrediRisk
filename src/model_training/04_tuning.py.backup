@@ -1,0 +1,120 @@
+"""
+Etapa 4 de entrenamiento:
+Ajuste de hiperparámetros (Tuning) con GridSearchCV.
+
+Buscamos la mejor combinación de hiperparámetros
+para nuestro modelo XGBoost utilizando Recall.
+"""
+
+import pandas as pd
+import joblib
+
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.metrics import accuracy_score, recall_score
+
+from config.path import (
+    PREPROCESSED_TRAIN_PATH,
+    PREPROCESSED_TEST_PATH,
+    MODEL_PATH,
+    TUNED_MODEL_PATH
+)
+
+
+def tuning_data(X_train, Y_train, X_test, Y_test):
+
+    # Cargamos el pipeline del modelo
+    pipeline = joblib.load(MODEL_PATH)
+
+    # Definimos los hiperparámetros que queremos probar
+    param_grid = {
+        "classifier__n_estimators": [100, 200, 300],
+        "classifier__max_depth": [3, 5, 7],
+        "classifier__learning_rate": [0.01, 0.05, 0.1]
+    }
+
+    # Creamos la validación cruzada
+    strat_cv = StratifiedKFold(
+        n_splits=5,
+        shuffle=True,
+        random_state=42
+    )
+
+    # Creamos GridSearchCV
+    grid = GridSearchCV(                                # Permite buscar la mejor combinacion de Hiperparametros y seleccioan el mejor 
+        pipeline,
+        param_grid=param_grid,
+        cv=strat_cv,
+        scoring="recall",
+        n_jobs=-1
+    )
+
+    # Ejecutamos la búsqueda
+    grid.fit(X_train, Y_train)
+
+    # Obtenemos el mejor modelo
+    tuned_pipeline = grid.best_estimator_
+
+    # Guardamos el mejor modelo
+    joblib.dump(
+        tuned_pipeline,
+        TUNED_MODEL_PATH
+    )
+    print(f"Modelo tuneado guardado en: {TUNED_MODEL_PATH}")
+
+    print("=== BEST MODEL ===")
+    print(f"Mejores parámetros: {grid.best_params_}")
+    print(f"Mejor Recall CV: {grid.best_score_:.4f}")
+
+    # Realizamos predicciones sobre TEST
+    Y_pred = tuned_pipeline.predict(X_test)
+
+    # Evaluamos
+    accuracy = accuracy_score(
+        Y_test,
+        Y_pred
+    )
+
+    recall = recall_score(
+        Y_test,
+        Y_pred
+    )
+
+    print("\n=== TEST EVALUATION ===")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Recall: {recall:.4f}")
+
+    return tuned_pipeline
+
+
+if __name__ == "__main__":
+
+    # Cargamos los datos
+    df_train = pd.read_csv(
+        PREPROCESSED_TRAIN_PATH
+    )
+
+    df_test = pd.read_csv(
+        PREPROCESSED_TEST_PATH
+    )
+
+    # Separar variables de entrenamiento
+    X_train = df_train.drop(
+        columns=["default", "cliente_id"]
+    )
+
+    Y_train = df_train["default"]
+
+    # Separar variables de prueba
+    X_test = df_test.drop(
+        columns=["default", "cliente_id"]
+    )
+
+    Y_test = df_test["default"]
+
+    # Ejecutar tuning
+    tuning_data(
+        X_train,
+        Y_train,
+        X_test,
+        Y_test
+    )
