@@ -1,0 +1,101 @@
+"""
+Analizaremos las metricas
+- Classification_report: [f1, recall, precision, accuracy]
+- matriz de confucion
+- curva roc
+"""
+import pandas as pd
+import joblib                   # Sirve para guardar modelos ya entrenados y volver a utilizarlo
+import matplotlib
+matplotlib.use("Agg")           # Usa el backend Agg para generar grafico sin abrir ventana
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_score, recall_score, f1_score, roc_auc_score
+from config.path import PREPROCESSED_TRAIN_PATH, PREPROCESSED_TEST_PATH, MODEL_PATH, ARTIFACT_DIR
+
+def evaluate_data(X_train, Y_train, X_test, Y_test):
+
+    # Cargamos el modelo entrenado
+    pipeline = joblib.load(MODEL_PATH)
+
+    # Realizar predicciones sobre el conjunto de test
+    Y_pred = pipeline.predict(X_test)
+    # Obtener probabildades de la Clase 1
+    Y_prob = pipeline.predict_proba(X_test)[:,1] # Dame todas de la fila de 1 columna y con predict_proba nos devuelve probabila d cada clase
+
+    # Metricas
+    accuracy = accuracy_score(Y_test, Y_pred)
+    precision = precision_score(Y_test, Y_pred)
+    recall = recall_score(Y_test, Y_pred)
+    f1 = f1_score(Y_test, Y_pred)
+    roc_auc = roc_auc_score(Y_test, Y_prob)
+    conf_matrix = confusion_matrix(Y_test, Y_pred)
+    class_report = classification_report(Y_test, Y_pred)
+    
+    print("Evaluation Metrics:")
+    print(f"Accuracy: {accuracy:.3f}")          # Muestrame el accuracy con 3 cifras despues del punto decimal
+    print(f"Precision: {precision:.3f}")
+    print(f"Recall: {recall:.3f}")
+    print(f"F1 Score: {f1:.3f}")
+    print(f"ROC-AUC: {roc_auc:.3f}")
+    print("Confusion Matrix:")
+    print(conf_matrix)
+    print("Classification Report:")
+    print(class_report)
+
+    # Evaluacion del modelo
+    train_score = pipeline.score(X_train, Y_train)      # Calcula el Accuracy sobre los datos entrenados
+    test_score = pipeline.score(X_test, Y_test)         # Calcula el Accuracy sobre los datos de prueba
+
+    print(f"Train Score: {train_score * 100:.2f}%")
+    print(f"Test Score: {test_score * 100:.2f}%")
+
+    # Analizar que variables son + importantes lara la decision del modelo
+    feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out(X_train.columns) # nombre cada variable
+    features_importance = pipeline.named_steps["classifier"].feature_importances_               # importancia que XGBoost le dio a cada variable
+
+    # Crear el DataFrame
+    importance_df = pd.DataFrame({
+        "Feature": feature_names,
+        "Importance": features_importance
+    })
+
+
+
+    # Ordenar Variables que XGBoost considera + importante
+    importance_df = importance_df.sort_values(          # Ordena las filas de este DataFrame
+        by="Importance",                                # ordena los valores de la columna Importance
+        ascending=False
+    )
+    print("Feature Importance")
+    print(importance_df)
+
+    # Grafico de Variables Feature
+    plt.figure(figsize=(10,6))
+    plt.barh(                                       # Grafico barra horizontales
+        importance_df["Feature"],
+        importance_df["Importance"]
+    )
+    plt.gca().invert_yaxis()                        # Invierte el eje Y para mostrar la variable mas importante 
+    plt.xlabel("Importance")
+    plt.title("XGBoost Feature Importance")
+    plt.tight_layout()
+    plt.savefig(ARTIFACT_DIR / "feature_importance.png")
+    plt.close()
+
+    return recall
+
+
+if __name__ == "__main__":
+    df_train = pd.read_csv(PREPROCESSED_TRAIN_PATH)
+    df_test = pd.read_csv(PREPROCESSED_TEST_PATH)
+    X_train = df_train.drop(columns=["default", "cliente_id"])
+    Y_train = df_train["default"]
+    X_test = df_test.drop(columns=["default", "cliente_id"])
+    Y_test = df_test["default"]
+    evaluate_data(
+        X_train,
+        Y_train,
+        X_test,
+        Y_test
+    )
+

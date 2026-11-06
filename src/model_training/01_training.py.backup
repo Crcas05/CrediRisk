@@ -1,0 +1,77 @@
+"""
+Usamos el train_csv para entrenar el modelo con XGBoost.
+- Variable predictora: X
+- Variable objetivo: Y
+Con el fin de predecir el default de nuevos clientes.
+"""
+import pandas as pd
+import joblib
+
+from xgboost import XGBClassifier
+
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import Pipeline
+
+from config.path import PREPROCESSED_TRAIN_PATH, MODEL_PATH
+
+
+def train_data(df):
+
+    # Copiar el DataFrame original
+    df_train = df.copy()
+
+    # Separar X e Y
+    X = df_train.drop(columns=["default", "cliente_id"])
+    Y = df_train["default"]
+
+    # Definir las variables categóricas
+    CATEGORICAL_COLS = [                        # Guarda  las 3 columnas que queremos transformar
+        "estado_civil",
+        "nivel_educativo",
+        "tipo_empleo"
+    ]
+
+    # Preparar las variables categóricas
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (
+                "categorical",
+                OneHotEncoder(handle_unknown="ignore"),     # Ignora categorias nuevas que no existian durante el entrenamiento
+                CATEGORICAL_COLS
+            )
+        ],
+        remainder="passthrough"         # Las columnas que no ha sido especificada en CATEGORICAL_COLS deja pasar sin transformacion
+    )
+
+    # Crear el modelo XGBoost
+    model = XGBClassifier(
+        n_estimators=200,
+        max_depth=5,
+        learning_rate=0.05,
+        random_state=42,
+        eval_metric="logloss"
+    )
+
+    # Crear el Pipeline
+    pipeline = Pipeline([
+        ("preprocessor", preprocessor),
+        ("classifier", model)
+    ])
+
+    # Entrenar el modelo
+    pipeline.fit(X, Y)
+
+    # Guardar el modelo entrenado
+    joblib.dump(pipeline, MODEL_PATH)
+
+    print("✅ Entrenamiento del modelo completado.")
+    print(f"📥 Datos de entrenamiento: {PREPROCESSED_TRAIN_PATH}")
+    print(f"💾 Modelo guardado en: {MODEL_PATH}")
+
+    return True
+
+
+if __name__ == "__main__":
+    df = pd.read_csv(PREPROCESSED_TRAIN_PATH)
+    train_data(df)
